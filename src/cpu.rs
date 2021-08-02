@@ -163,7 +163,12 @@ impl<'a> CPU<'a> {
         self.set_simple_arithmetic_flags(result);
     }
 
-    fn get_source_value(&self, source: InstructionSource, sign_extend: bool) -> u32 {
+    fn get_source_value(
+        &self,
+        source: InstructionSource,
+        sign_extend: bool,
+        is_destination_8bit: bool,
+    ) -> u32 {
         match source {
             InstructionSource::RegisterLow8(register) => {
                 self.get_register(Register32::from(register))
@@ -179,27 +184,44 @@ impl<'a> CPU<'a> {
             InstructionSource::Immediate32(value) => value,
             InstructionSource::Memory8(address) => self.get_memory_u8(address) as u32,
             InstructionSource::Memory32(address) => self.get_memory_u32(address),
-            InstructionSource::SIB {
-                base,
-                index,
-                scale,
-                is_8bit,
-                offset,
-            } => {
-                let address = self.get_register(base)
-                    + if let Some(index_register) = index {
-                        self.get_register(index_register)
-                    } else {
-                        0
-                    } * scale as u32
-                    + offset;
+            InstructionSource::SIB { .. } => {
+                let address = self.get_effective_address(source);
 
-                if is_8bit {
+                if is_destination_8bit {
                     self.get_memory_u8(address) as u32
                 } else {
                     self.get_memory_u32(address) as u32
                 }
             }
+            InstructionSource::DerefRegister32(register) => {
+                let address = self.get_register(register);
+
+                if is_destination_8bit {
+                    self.get_memory_u8(address) as u32
+                } else {
+                    self.get_memory_u32(address)
+                }
+            }
+        }
+    }
+
+    fn get_effective_address(&self, source: InstructionSource) -> u32 {
+        match source {
+            InstructionSource::SIB {
+                base,
+                index,
+                scale,
+                displacement: offset,
+            } => {
+                let index_value = if let Some(index_register) = index {
+                    self.get_register(index_register)
+                } else {
+                    0
+                };
+
+                self.get_register(base) + index_value * scale as u32 + offset
+            }
+            _ => todo!(),
         }
     }
 
@@ -274,17 +296,24 @@ impl<'a> CPU<'a> {
                     // TODO: This should probably only set the lowest 8 bits and leave the top 24 as is.
                     InstructionDestination::RegisterLow8(register) => self.set_register(
                         Register32::from(register),
-                        self.get_source_value(source, false),
+                        self.get_source_value(source, false, true),
                     ),
                     InstructionDestination::Register32(register) => {
-                        self.set_register(register, self.get_source_value(source, false))
+                        self.set_register(register, self.get_source_value(source, false, false))
                     }
+                },
+                InstructionKind::LoadEffectiveAddr(destination, source) => match destination {
+                    InstructionDestination::Register32(register) => {
+                        self.set_register(register, self.get_effective_address(source))
+                    }
+                    _ => todo!(),
                 },
                 InstructionKind::Add(destination, source, should_sign_extend) => {
                     match destination {
                         InstructionDestination::Register32(register) => {
                             let register_value = self.get_register(register);
-                            let other_value = self.get_source_value(source, should_sign_extend);
+                            let other_value =
+                                self.get_source_value(source, should_sign_extend, false);
 
                             let result = register_value.wrapping_add(other_value);
 
@@ -303,7 +332,7 @@ impl<'a> CPU<'a> {
 
                     match destination {
                         InstructionDestination::Register32(register) => {
-                            let other_value = self.get_source_value(source, false);
+                            let other_value = self.get_source_value(source, false, false);
                             let result = self.get_register(register) ^ other_value;
 
                             self.set_register(register, result);
@@ -320,7 +349,8 @@ impl<'a> CPU<'a> {
                         todo!();
                     }
 
-                    self.stack.push32(self.get_source_value(source, false));
+                    self.stack
+                        .push32(self.get_source_value(source, false, false));
 
                     let size = match source {
                         InstructionSource::Immediate8(_) => 1,
@@ -341,13 +371,13 @@ impl<'a> CPU<'a> {
                     _ => todo!(),
                 },
                 InstructionKind::JumpRelative(displacement) => {
-                    pc = pc.wrapping_add(self.get_source_value(displacement, true));
+                    pc = pc.wrapping_add(self.get_source_value(displacement, true, false));
                 }
                 InstructionKind::JumpRelativeIfEqual(displacement) => {
                     self.dump_flags();
 
                     if self.get_flag(Flag::Zero) {
-                        pc = pc.wrapping_add(self.get_source_value(displacement, true));
+                        pc = pc.wrapping_add(self.get_source_value(displacement, true, false));
                     }
                 }
                 InstructionKind::CallRelative(displacement) => {
@@ -355,11 +385,11 @@ impl<'a> CPU<'a> {
                     self.stack.push32((pc + instruction.size) as u32);
 
                     // Displacement is relative to *next* instruction
-                    pc = pc.wrapping_add(self.get_source_value(displacement, true));
+                    pc = pc.wrapping_add(self.get_source_value(displacement, true, false));
                 }
                 InstructionKind::Compare(source1, source2) => {
-                    let lhs = self.get_source_value(source1, false);
-                    let rhs = self.get_source_value(source2, false);
+                    let lhs = self.get_source_value(source1, false, false);
+                    let rhs = self.get_source_value(source2, false, false);
 
                     let result = lhs.wrapping_sub(rhs);
 

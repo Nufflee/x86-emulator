@@ -33,7 +33,9 @@ strlen:
   xor edx, edx
 
 strlen_loop:
-  mov bl, [ecx + edx]
+  lea ebx, [ecx + edx] 
+  ; mov bl, [ecx + edx]
+  mov bl, [ebx]
   cmp bl, 0x0
   je strlen_end
   add edx, 1

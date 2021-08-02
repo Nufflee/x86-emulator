@@ -9,6 +9,8 @@ pub mod opcode {
     pub const MOV_REG_IMM32: u8 = 0xB8;
     pub const MOV_REG_REG: u8 = 0x89;
 
+    pub const LEA_REG_MEM: u8 = 0x8D;
+
     pub const PUSH_IMM: u8 = 0x68;
     pub const POP_REG: u8 = 0x58;
 
@@ -40,6 +42,7 @@ pub struct Instruction {
 #[derive(Debug)]
 pub enum InstructionKind {
     Mov(InstructionDestination, InstructionSource),
+    LoadEffectiveAddr(InstructionDestination, InstructionSource),
     Push(InstructionSource),
     Pop(InstructionDestination),
     Add(InstructionDestination, InstructionSource, bool),
@@ -58,6 +61,7 @@ pub enum InstructionKind {
 pub enum InstructionSource {
     RegisterLow8(RegisterLow8),
     Register32(Register32),
+    IndirectRegister32(Register32),
     Immediate8(u8),
     Immediate32(u32),
     Memory8(u32),
@@ -66,8 +70,7 @@ pub enum InstructionSource {
         base: Register32,
         index: Option<Register32>,
         scale: u8,
-        offset: u32,
-        is_8bit: bool,
+        displacement: u32,
     },
 }
 

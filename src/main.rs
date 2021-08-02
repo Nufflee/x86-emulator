@@ -35,7 +35,7 @@ fn main() {
     let mut address = 0;
     let mut ret_hit = false;
 
-    let parse_sib = |byte, is_8bit, offset| -> InstructionSource {
+    let parse_sib = |byte: u8, displacement: u32| -> InstructionSource {
         let sib_base = byte & 0b111;
         let sib_index = (byte >> 3) & 0b111_u8;
         let sib_scale: u8 = (byte >> 6) & 0b11_u8;
@@ -58,8 +58,7 @@ fn main() {
             base: Register32::try_from(sib_base).unwrap(),
             index: index_register,
             scale,
-            is_8bit,
-            offset,
+            displacement,
         }
     };
 
@@ -123,16 +122,17 @@ fn main() {
 
                 address += 4;
             }
-            // SIB32
+            // SIB
             else if mod_field == 0 && rm_field == 0b100 {
-                let sib = parse_sib(binary[address], false, 0);
+                let sib = parse_sib(binary[address], 0);
 
                 address += 1;
 
                 disassembled_instruction =
                     InstructionKind::Mov(InstructionDestination::Register32(destination), sib)
+            // SIB + disp8
             } else if mod_field == 1 && rm_field == 0b100 {
-                let sib = parse_sib(binary[address], false, binary[address + 1] as u32);
+                let sib = parse_sib(binary[address], binary[address + 1] as u32);
 
                 address += 2;
 
@@ -159,18 +159,23 @@ fn main() {
             }
             // SIB
             else if mod_field == 0 && rm_field == 0b100 {
-                let sib = parse_sib(binary[address], true, 0);
+                let sib = parse_sib(binary[address], 0);
 
                 address += 1;
 
                 disassembled_instruction =
                     InstructionKind::Mov(InstructionDestination::RegisterLow8(destination), sib)
+            } else if mod_field == 0 {
+                // We've exhausted the SIB and disp32 cases so we know this is a register operand
+                disassembled_instruction = InstructionKind::Mov(
+                    InstructionDestination::RegisterLow8(destination),
+                    InstructionSource::DerefRegister32(Register32::try_from(rm_field).unwrap()),
+                );
             } else {
                 todo!("mod_field = {:#b}, rm_field = {:#b}", mod_field, rm_field)
             }
         } else if opcode == MOV_REG_REG {
             // TODO: This can also be used for 16-bit.
-
             let source = Register32::try_from(reg_field).unwrap();
             let destination = Register32::try_from(rm_field).unwrap();
 
@@ -184,6 +189,25 @@ fn main() {
             );
 
             address += 2;
+        } else if opcode == LEA_REG_MEM {
+            // TODO: reg8 and reg16
+            let destination = Register32::try_from(reg_field).unwrap();
+
+            address += 2;
+
+            // SIB
+            if mod_field == 0 && rm_field == 0b100 {
+                let sib = parse_sib(binary[address], 0);
+
+                address += 1;
+
+                disassembled_instruction = InstructionKind::LoadEffectiveAddr(
+                    InstructionDestination::Register32(destination),
+                    sib,
+                );
+            } else {
+                todo!("mod_field = {:#b}, rm_field = {:#b}", mod_field, rm_field)
+            }
         } else if opcode == PUSH_IMM {
             // TODO: This opcode can be used with imm16 too.
             address += 1;
