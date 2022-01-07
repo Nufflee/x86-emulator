@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use core::convert::TryInto;
 
 // This is required for #![no_std]
 use alloc::vec::Vec;

@@ -1,9 +1,9 @@
-use std::cmp::max;
+use core::cmp::max;
+use core::convert::{TryFrom, TryInto};
+use core::mem::size_of;
+use core::ops::{BitAnd, BitOr, Not, Shl, Shr};
+use core::slice::Iter;
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
-use std::mem::size_of;
-use std::ops::{BitAnd, BitOr, Not, Shl, Shr};
-use std::slice::Iter;
 
 use crate::instruction::{
     Instruction, InstructionDestination, InstructionKind, InstructionSource, Register32,
@@ -193,7 +193,7 @@ impl<'a> CPU<'a> {
                     self.get_memory_u32(address) as u32
                 }
             }
-            InstructionSource::DerefRegister32(register) => {
+            InstructionSource::IndirectRegister32(register) => {
                 let address = self.get_register(register);
 
                 if is_destination_8bit {
@@ -437,6 +437,7 @@ impl<'a> CPU<'a> {
                     pc = self.stack.pop32();
                     continue;
                 }
+                InstructionKind::UD0 => { /* End marker; no-op */ }
             }
 
             if DUMP_REGISTERS {
@@ -489,7 +490,7 @@ where
         + TryFrom<i8>
         + BitAnd<Output = TTo>
         + BitOr<Output = TTo>,
-    <TTo as TryFrom<i8>>::Error: std::fmt::Debug,
+    <TTo as TryFrom<i8>>::Error: core::fmt::Debug,
 {
     let from_bits = size_of::<TFrom>() * 8;
 
@@ -528,6 +529,7 @@ where
 mod tests {
     use crate::cpu::{sign_extend, sign_extend32, sign_of};
     use crate::{cpu::CPU, stack::Stack};
+    use core::arch::asm;
 
     const STACK_SIZE: u32 = 256;
 
@@ -573,6 +575,7 @@ mod tests {
         assert_eq!(sign_extend::<u8, u32>(1 << 7), !0 << 7);
     }
 
+    // TODO: Save the output of these instructions somewhere so this test can run on non-x86 architectures.
     #[test]
     #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_feature))]
     fn test_additive_flags() {
@@ -608,6 +611,7 @@ mod tests {
         }
     }
 
+    // TODO: Save the output of these instructions somewhere so this test can run on non-x86 architectures.
     #[test]
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn test_subtractive_flags() {

@@ -1,3 +1,5 @@
 /target
-*.bin
 /.vscode
+*.bin
+*.o
+*.out

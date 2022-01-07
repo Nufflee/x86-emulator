@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use core::convert::TryFrom;
 
 use num_enum::TryFromPrimitive;
 
@@ -6,7 +6,7 @@ pub mod opcode {
     pub const MOV_REG8_MEM8: u8 = 0x8A;
     pub const MOV_REG_OR_MEM_REG: u8 = 0x8B;
     pub const MOV_REG_IMM8: u8 = 0xB0;
-    pub const MOV_REG_IMM32: u8 = 0xB8;
+    pub const MOV_REG_IMM: u8 = 0xB8;
     pub const MOV_REG_REG: u8 = 0x89;
 
     pub const LEA_REG_MEM: u8 = 0x8D;
@@ -28,18 +28,18 @@ pub mod opcode {
     pub const CALL_REL: u8 = 0xE8;
     pub const RET: u8 = 0xC3;
 
-    // TODO: Multi-byte opcodes are always prefixed with 0x0F, so this doesn't have to be here
-    pub const SYSCALL: u16 = 0x050F;
-    pub const UD0: u16 = 0xFF0F;
+    /// Two-byte opcode, prefix 0x0F
+    pub const SYSCALL: u8 = 0x05;
+    pub const UD0: u8 = 0xFF;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Instruction {
     pub size: u32,
     pub kind: InstructionKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum InstructionKind {
     Mov(InstructionDestination, InstructionSource),
     LoadEffectiveAddr(InstructionDestination, InstructionSource),
@@ -53,6 +53,13 @@ pub enum InstructionKind {
     CallRelative(InstructionSource),
     Syscall,
     Ret,
+    UD0,
+}
+
+impl PartialEq for InstructionKind {
+    fn eq(&self, other: &Self) -> bool {
+        core::mem::discriminant(self) == core::mem::discriminant(other)
+    }
 }
 
 // TODO: Custom formatter that formats Memory operands as hex
